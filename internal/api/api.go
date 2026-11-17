@@ -308,11 +308,16 @@ func (s *server) handleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// 探测 + 缩略图(视频取第 1 秒帧;失败不阻断入库,面板有无缩略图兜底样式)
-	dur, vw, vh := library.Probe(s.cfg.FFmpegPath, srcPath)
+	dur, vw, vh := 0.0, 0, 0
+	if kind == "video" {
+		dur, vw, vh = library.Probe(s.cfg.FFmpegPath, srcPath)
+	} else {
+		_, vw, vh = library.Probe(s.cfg.FFmpegPath, srcPath) // 图片只要分辨率
+	}
 	_ = library.MakeThumb(s.cfg.FFmpegPath, srcPath, filepath.Join(dir, "thumb.jpg"), kind)
 
 	it := library.Item{ID: id, Name: name, Kind: kind, Ext: ext, Bytes: written,
-		DurationSec: dur, Width: vw, Height: vh, Active: true, CreatedAt: time.Now()}
+		DurationSec: dur, Width: vw, Height: vh, Slot: "any", Active: true, CreatedAt: time.Now()}
 	if err := s.lib.Add(it); err != nil {
 		os.RemoveAll(dir)
 		errJSON(w, http.StatusInternalServerError, err)
