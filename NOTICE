@@ -1,0 +1,22 @@
+WallLoop - NAS dynamic wallpaper service (original app)
+https://github.com/ericbyz/wallloop
+Copyright 2026 WallLoop contributors
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+
+Runtime dependencies (NOT bundled, expected from the host OS):
+  - ffmpeg (used via exec for probing, thumbnails and demo-wallpaper
+    synthesis; on TerraMaster TOS the factory-provided /usr/bin/ffmpeg
+    is used). No upstream/CDN media assets are shipped or downloaded
+    by this software: all wallpapers come from user uploads or are
+    synthesized locally by ffmpeg.

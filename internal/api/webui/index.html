@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WallLoop 动态壁纸</title>
+<link rel="icon" href="logo.svg" type="image/svg+xml">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <img src="logo.svg" alt="WallLoop">
+    <div>
+      <div class="t1">WallLoop 动态壁纸</div>
+      <div class="t2">NAS 自托管壁纸馆 · 循环播放 / 时段切换</div>
+    </div>
+  </div>
+  <div class="chips" id="chips"></div>
+  <div class="spacer"></div>
+  <button class="btn" id="btn-refresh" title="刷新数据">刷新</button>
+  <a class="btn primary" id="btn-play" href="play.html" target="_blank">▶ 打开播放器</a>
+</header>
+
+<div class="layout">
+  <!-- 左列:上传 + 壁纸库 -->
+  <main>
+    <section class="panel" style="margin-bottom:18px">
+      <div class="panel-b">
+        <div class="dropzone" id="dropzone">
+          <div class="big">把壁纸拖到这里,或 <button class="btn small primary" id="btn-pick">选择文件</button></div>
+          <div class="fmt">视频 mp4 / webm / mov / mkv · 图片 jpg / png / webp / gif · 支持多选,单个最大 4 GB</div>
+          <input type="file" id="file-input" multiple accept=".mp4,.webm,.mov,.mkv,.jpg,.jpeg,.png,.webp,.gif" hidden>
+        </div>
+        <div class="uploads" id="uploads"></div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h">
+        <h2>壁纸库</h2>
+        <span class="sub" id="lib-count"></span>
+      </div>
+      <div class="panel-b">
+        <div class="grid" id="grid"></div>
+        <div class="empty" id="empty" hidden>
+          <img class="logo" src="logo.svg" alt="">
+          <div>壁纸库还是空的</div>
+          <div class="hint">拖入视频/图片上传,或在右侧「演示壁纸」用 NAS 本机 ffmpeg 现场生成一段</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <!-- 右列:正在播放 + 设置 + 生成器 + 客户端接入 -->
+  <aside>
+    <section class="panel" style="margin-bottom:18px">
+      <div class="panel-h"><h2>正在播放</h2></div>
+      <div class="panel-b">
+        <div class="nowplaying" id="nowplaying"><span class="dot"></span><span id="now-name">—</span></div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:18px">
+      <div class="panel-h"><h2>播单设置</h2><span class="sub" id="set-mode-label"></span></div>
+      <div class="panel-b">
+        <div class="field">
+          <label>播放模式</label>
+          <div class="seg" id="seg-mode">
+            <button data-v="rotation" class="on">轮换</button>
+            <button data-v="timeofday">日/夜时段</button>
+            <button data-v="single">单曲循环</button>
+          </div>
+          <div class="modehint" id="modehint"></div>
+        </div>
+        <div class="field" id="f-interval">
+          <label>轮换间隔(分钟)</label>
+          <input type="number" id="in-interval" min="1" max="1440" value="30">
+        </div>
+        <div class="field" id="f-order">
+          <label>顺序</label>
+          <div class="seg" id="seg-order">
+            <button data-v="shuffle" class="on">随机</button>
+            <button data-v="seq">按加入顺序</button>
+          </div>
+        </div>
+        <div class="row2" id="f-times" hidden>
+          <div class="field"><label>日间开始</label><input type="time" id="in-day" value="07:00"></div>
+          <div class="field"><label>夜间开始</label><input type="time" id="in-night" value="19:00"></div>
+        </div>
+        <button class="btn primary" id="btn-save-set" style="width:100%">保存设置</button>
+        <div class="modehint">时段模式下,壁纸可标记「日间 / 夜间 / 任意」槽位(卡片上的 日/夜/任 切换),到点自动换挡。</div>
+      </div>
+    </section>
+
+    <section class="panel" style="margin-bottom:18px">
+      <div class="panel-h"><h2>演示壁纸生成</h2><span class="sub">ffmpeg 本机合成 · 零版权素材</span></div>
+      <div class="panel-b">
+        <div id="presets"></div>
+        <div class="field">
+          <label>时长</label>
+          <div class="range">
+            <input type="range" id="in-secs" min="5" max="60" step="5" value="15">
+            <span class="val" id="secs-val">15 秒</span>
+          </div>
+        </div>
+        <div class="field" id="f-kensrc" hidden>
+          <label>选择一张图片壁纸作运动源</label>
+          <select id="in-kensrc"></select>
+        </div>
+        <button class="btn primary" id="btn-gen" style="width:100%">开始生成</button>
+        <div class="jobs" id="jobs"></div>
+        <div class="modehint">生成 720p25 视频跑在 NAS CPU 上,约需几十秒到几分钟,完成后自动入库并进入播单。</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div class="panel-h"><h2>客户端接入</h2></div>
+      <div class="panel-b">
+        <div class="apirow"><code id="url-play"></code><button class="btn small" data-copy="url-play">复制</button></div>
+        <div class="apirow"><code id="url-now"></code><button class="btn small" data-copy="url-now">复制</button></div>
+        <div class="apirow"><code id="url-list"></code><button class="btn small" data-copy="url-list">复制</button></div>
+        <div class="tip">
+          · 电视 / 平板 / 手机浏览器直接打开<b>播放器</b>全屏,即动态壁纸大屏;<br>
+          · <b>now 接口</b>返回当前壁纸 JSON(含媒体直链),供 Wallpaper Engine 移动版「URL/网页壁纸」或 Lively 等拉流;<br>
+          · 媒体直链支持 Range 断点,可被下载器/播放器直接消费。
+        </div>
+      </div>
+    </section>
+  </aside>
+</div>
+
+<!-- 重命名弹窗 -->
+<div class="modal-mask" id="rename-mask">
+  <div class="modal">
+    <h3>重命名壁纸</h3>
+    <div class="field"><input type="text" id="in-rename" maxlength="60" style="width:100%;padding:8px 10px;border-radius:9px;background:var(--bg-soft);border:1px solid var(--line)"></div>
+    <div class="btns">
+      <button class="btn" id="btn-rename-cancel">取消</button>
+      <button class="btn primary" id="btn-rename-ok">保存</button>
+    </div>
+  </div>
+</div>
+
+<div id="toasts"></div>
+<script src="app.js"></script>
+</body>
+</html>
