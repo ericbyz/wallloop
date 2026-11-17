@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # WallLoop 冒烟测试:对运行中的实例过一遍核心 API(上传→播单→轮换→生成→删除)。
-# 用法:BASE=http://127.0.0.1:18240 ./smoke.sh
+# 用法:BASE=http://127.0.0.1:18241 PUB=http://127.0.0.1:18240 ./smoke.sh
 # 依赖:curl、ffmpeg(生成测试素材与演示壁纸)
 set -euo pipefail
 # Windows/Git Bash 下 python 默认按本地码页解码 stdin,会搅乱 UTF-8 断言;Linux 无感
 export PYTHONUTF8=1 PYTHONIOENCODING=utf-8
 
-BASE="${BASE:-http://127.0.0.1:18240}"
+BASE="${BASE:-http://127.0.0.1:18241}"   # 管理面
+PUB="${PUB:-http://127.0.0.1:18240}"     # 公开面
 TMP="$(mktemp -d)"
 trap 'rm -rf "${TMP}"' EXIT
 FF="${FFMPEG:-ffmpeg}"
@@ -14,8 +15,9 @@ FF="${FFMPEG:-ffmpeg}"
 fail() { echo "FAIL: $*" >&2; exit 1; }
 note() { echo "== $*"; }
 
-note "healthz"
-curl -fsS "${BASE}/healthz" | grep -q ok || fail "healthz"
+note "healthz(双面)"
+curl -fsS "${BASE}/healthz" | grep -q ok || fail "admin healthz"
+curl -fsS "${PUB}/healthz" | grep -q ok || fail "public healthz"
 
 note "生成 6 秒测试视频(testsrc2)并上传"
 "${FF}" -hide_banner -loglevel error -y -f lavfi -i testsrc2=s=640x360:r=15 \
@@ -37,18 +39,28 @@ curl -fsS -X POST -H 'Content-Type: application/json' --data-binary @"${TMP}/ren
   "${BASE}/api/v1/items/${ID}/rename" >/dev/null
 curl -fsS -X POST "${BASE}/api/v1/items/${ID}/activate" >/dev/null
 
-note "now 接口返回刚激活的条目"
-curl -fsS "${BASE}/api/v1/now" | python3 -c "
+note "now 接口返回刚激活的条目(公开面)"
+curl -fsS "${PUB}/api/v1/now" | python3 -c "
 import json,sys
 r = json.load(sys.stdin)
 assert r['item'] and r['item']['id']=='${ID}', r
 assert r['item']['name']=='冒烟改名', r['item']['name']
 print('   now:', r['item']['name'], '| mode:', r['mode'])"
 
-note "媒体可拉且支持 Range"
-curl -fsS -o /dev/null -w '   full=%{http_code} ' "${BASE}/media/${ID}/src.mp4"
+note "媒体可拉且支持 Range(公开面)"
+curl -fsS -o /dev/null -w '   full=%{http_code} ' "${PUB}/media/${ID}/src.mp4"
 curl -fsS -o /dev/null -H 'Range: bytes=0-99' -w 'range=%{http_code}(206 为通过)\n' \
-  "${BASE}/media/${ID}/src.mp4" | grep -E '206|200' || fail "Range 请求异常"
+  "${PUB}/media/${ID}/src.mp4" | grep -E '206|200' || fail "Range 请求异常"
+
+note "公开面隔离:管理 API 一律不可达"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' -X POST "${PUB}/api/v1/upload")"
+[ "${CODE}" = "404" ] || fail "公开面上传应 404,得到 ${CODE}"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' -X DELETE "${PUB}/api/v1/items/${ID}")"
+[ "${CODE}" = "404" ] || fail "公开面删除应 404,得到 ${CODE}"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' "${PUB}/api/v1/state")"
+[ "${CODE}" = "404" ] || fail "公开面 state 应 404,得到 ${CODE}"
+CODE="$(curl -s -o /dev/null -w '%{http_code}' "${PUB}/play")"
+[ "${CODE}" = "200" ] || fail "公开面播放器应 200,得到 ${CODE}"
 
 note "槽位 + 停用/启用"
 curl -fsS -X POST -H 'Content-Type: application/json' -d '{"slot":"night"}' "${BASE}/api/v1/items/${ID}/slot" >/dev/null

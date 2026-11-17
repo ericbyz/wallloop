@@ -324,10 +324,11 @@ function renderJobs(jobs) {
 /* —— 客户端接入 —— */
 
 function renderApiUrls() {
-  const abs = new URL(BASE, location.href).href.replace(/\/$/, "");
-  $("#url-play").textContent = abs + "/play";
-  $("#url-now").textContent = abs + "/api/v1/now";
-  $("#url-list").textContent = abs + "/api/v1/playlist";
+  // 公开面(电视/手机直连):当前主机名 + 服务端公开端口(管理面经 nginx 时主机名不变)
+  const pub = `http://${location.hostname}:${state.publicPort || "18240"}`;
+  $("#url-play").textContent = pub + "/play";
+  $("#url-now").textContent = pub + "/api/v1/now";
+  $("#url-list").textContent = pub + "/api/v1/playlist";
 }
 $$("[data-copy]").forEach((b) => b.onclick = async () => {
   try { await navigator.clipboard.writeText($("#" + b.dataset.copy).textContent); toast("已复制", "ok"); }

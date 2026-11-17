@@ -38,6 +38,12 @@ type server struct {
 }
 
 // Run 启动服务(阻塞,由 systemd 管理生命周期)。
+//
+// 双监听面设计(同 AdWall 的"面板仅 TOS 桌面可达"叙事,扩展到播放器场景):
+//   - 管理面 ADMIN_LISTEN(默认 127.0.0.1:18241):面板 + 全部 API——只能经
+//     TOS nginx /wallloop/(TOS 登录态之后)反代访问,天然免鉴权;
+//   - 公开面 LISTEN(默认 0.0.0.0:18240):只读子集(播放器页/媒体 Range/
+//     now/playlist)——电视、平板、手机浏览器直连,即动态壁纸大屏本体。
 func Run() error {
 	cfg := config.Load()
 	lib, err := library.Open(cfg.StatePath(), cfg.LibraryDir())
@@ -46,34 +52,59 @@ func Run() error {
 	}
 	s := &server{cfg: cfg, lib: lib, jobs: library.NewJobs()}
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+	adminMux := http.NewServeMux()
+	adminMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("ok"))
 	})
-	mux.HandleFunc("/api/v1/state", s.handleState)
-	mux.HandleFunc("/api/v1/upload", s.handleUpload)
-	mux.HandleFunc("/api/v1/items/", s.handleItem)
-	mux.HandleFunc("/api/v1/settings", s.handleSettings)
-	mux.HandleFunc("/api/v1/generate", s.handleGenerate)
-	mux.HandleFunc("/api/v1/jobs", s.handleJobs)
-	mux.HandleFunc("/api/v1/now", s.handleNow)
-	mux.HandleFunc("/api/v1/playlist", s.handlePlaylist)
-	mux.HandleFunc("/media/", s.handleMedia)
-	mux.HandleFunc("/play", s.handlePage("play.html"))
-	mux.HandleFunc("/", s.handleRoot)
+	adminMux.HandleFunc("/api/v1/state", s.handleState)
+	adminMux.HandleFunc("/api/v1/upload", s.handleUpload)
+	adminMux.HandleFunc("/api/v1/items/", s.handleItem)
+	adminMux.HandleFunc("/api/v1/settings", s.handleSettings)
+	adminMux.HandleFunc("/api/v1/generate", s.handleGenerate)
+	adminMux.HandleFunc("/api/v1/jobs", s.handleJobs)
+	adminMux.HandleFunc("/api/v1/now", s.handleNow)
+	adminMux.HandleFunc("/api/v1/playlist", s.handlePlaylist)
+	adminMux.HandleFunc("/media/", s.handleMedia)
+	adminMux.HandleFunc("/play", s.handlePage("play.html"))
+	adminMux.HandleFunc("/", s.handleRoot)
 
-	srv := &http.Server{
-		Addr:              cfg.Listen,
-		Handler:           logReq(mux),
+	// 公开面:只读子集(播放器 + 媒体 + now/playlist + 健康检查)
+	publicMux := http.NewServeMux()
+	publicMux.HandleFunc("/healthz", func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("ok"))
+	})
+	publicMux.HandleFunc("/api/v1/now", s.handleNow)
+	publicMux.HandleFunc("/api/v1/playlist", s.handlePlaylist)
+	publicMux.HandleFunc("/media/", s.handleMedia)
+	publicMux.HandleFunc("/play", s.handlePage("play.html"))
+	publicMux.HandleFunc("/logo.svg", s.handleAsset("logo.svg"))
+	publicMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		// 其余一律 404:上传/删除/设置等管理能力不暴露到 LAN
+		http.NotFound(w, r)
+	})
+
+	adminSrv := &http.Server{
+		Addr:              cfg.AdminListen,
+		Handler:           logReq(adminMux),
 		ReadHeaderTimeout: 30 * time.Second,
-		// 大视频上传不设整体读超时(默认无限),靠 MaxBytesReader 限体积
+	}
+	publicSrv := &http.Server{
+		Addr:              cfg.Listen,
+		Handler:           logReq(publicMux),
+		ReadHeaderTimeout: 30 * time.Second,
+		// 大视频下载不设整体读超时(默认无限),靠连接关闭结束
 	}
 
-	errc := make(chan error, 1)
+	errc := make(chan error, 2)
 	go func() {
-		log.Printf("wallloop: 监听 %s(播放器 /play,面板 /,数据 %s)", cfg.Listen, cfg.DataDir)
-		errc <- srv.ListenAndServe()
+		log.Printf("wallloop: 管理面 http://%s/(面板,经 TOS nginx /%s/ 反代)", cfg.AdminListen, cfg.AppID)
+		errc <- adminSrv.ListenAndServe()
+	}()
+	go func() {
+		log.Printf("wallloop: 公开面 http://%s/play(播放器,LAN 直连)", cfg.Listen)
+		errc <- publicSrv.ListenAndServe()
 	}()
 
 	stop := make(chan os.Signal, 1)
@@ -85,7 +116,17 @@ func Run() error {
 		log.Printf("wallloop: 收到退出信号,优雅关闭")
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		return srv.Shutdown(ctx)
+		_ = adminSrv.Shutdown(ctx)
+		_ = publicSrv.Shutdown(ctx)
+		return nil
+	}
+}
+
+// handleAsset 出 embed 内单个静态文件(公开面播放器引用 logo 用)。
+func (s *server) handleAsset(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		static, _ := fs.Sub(webFS, "webui")
+		s.serveFile(w, r, static, name)
 	}
 }
 
@@ -203,7 +244,8 @@ func (s *server) handleState(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{
 		"items": views, "settings": set, "current": curMap,
 		"stats": s.lib.SnapshotStats(), "jobs": s.jobs.Snapshot(),
-		"presets": library.GenPresets,
+		"presets":    library.GenPresets,
+		"publicPort": s.cfg.Port,
 	})
 }
 

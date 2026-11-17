@@ -18,12 +18,19 @@ WallLoop 是一个自托管的动态壁纸服务(类 Steam Wallpaper Engine 的 
 ## 快速开始
 
 ```bash
-./wallloop run            # 监听 0.0.0.0:18240(环境变量可覆盖)
-# 面板   http://<NAS>:18240/
-# 播放器 http://<NAS>:18240/play
+./wallloop run
+# 管理面 http://127.0.0.1:18241/   (面板 + 全部 API,经 TOS nginx /wallloop/ 反代)
+# 公开面 http://<NAS>:18240/play   (播放器 + 媒体 + now API,电视/手机 LAN 直连)
 ```
 
-环境变量(见 `wallloop.env`):`WALLLOOP_LISTEN` / `WALLLOOP_PORT` / `WALLLOOP_DATA_DIR`(默认 `/var/lib/wallloop`)/ `WALLLOOP_FFMPEG`(默认 `/usr/bin/ffmpeg`,TOS 出厂自带)/ `WALLLOOP_MAX_UPLOAD_BYTES`。
+双监听面设计:管理能力(上传/删除/设置)只绑 `127.0.0.1`,只能经 TOS 桌面悬浮窗
+(TOS nginx、TOS 登录态之后)访问,天然免鉴权;公开面只读(播放器/媒体/now),
+绑 `0.0.0.0` 供电视/平板/手机浏览器直连。
+
+环境变量(见 `wallloop.env`):`WALLLOOP_LISTEN`(公开面,默认 `0.0.0.0:18240`)/
+`WALLLOOP_ADMIN_LISTEN`(管理面,默认 `127.0.0.1:18241`)/ `WALLLOOP_DATA_DIR`
+(默认 `/var/lib/wallloop`)/ `WALLLOOP_FFMPEG`(默认 `/usr/bin/ffmpeg`,TOS 出厂自带)/
+`WALLLOOP_MAX_UPLOAD_BYTES`(默认 4 GB)。
 
 ## 目录结构
 

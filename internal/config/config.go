@@ -11,8 +11,11 @@ import (
 
 // Config 服务运行配置(全部可用环境变量覆盖,见 wallloop.env)。
 type Config struct {
-	Listen        string // HTTP 监听地址(面板 + API + 媒体,0.0.0.0 播放器要给电视/手机直连)
-	Port          string // 端口备案值(校验用,须与 Listen 端口一致)
+	Listen        string // 公开面监听(播放器/媒体/now API,0.0.0.0 给电视/手机直连)
+	Port          string // 公开面端口备案值(须与 Listen 端口一致)
+	AdminListen   string // 管理面监听(面板 + 写 API,127.0.0.1 只给 TOS nginx 反代)
+	AdminPort     string // 管理面端口备案值
+	AppID         string // 应用 id(nginx 路由前缀,日志/文案用)
 	DataDir       string // 壁纸库/state.json/缩略图落盘目录
 	FFmpegPath    string // ffmpeg 可执行文件路径(TOS 出厂自带 /usr/bin/ffmpeg)
 	MaxUploadByte int64  // 单文件上传上限
@@ -23,6 +26,9 @@ func Load() *Config {
 	c := &Config{
 		Listen:        envOr("WALLLOOP_LISTEN", "0.0.0.0:18240"),
 		Port:          envOr("WALLLOOP_PORT", "18240"),
+		AdminListen:   envOr("WALLLOOP_ADMIN_LISTEN", "127.0.0.1:18241"),
+		AdminPort:     envOr("WALLLOOP_ADMIN_PORT", "18241"),
+		AppID:         envOr("WALLLOOP_APP_ID", "wallloop"),
 		DataDir:       envOr("WALLLOOP_DATA_DIR", "/var/lib/wallloop"),
 		FFmpegPath:    envOr("WALLLOOP_FFMPEG", "/usr/bin/ffmpeg"),
 		MaxUploadByte: envIntOr("WALLLOOP_MAX_UPLOAD_BYTES", 4<<30),
