@@ -100,10 +100,17 @@ gen = [i for i in st['items'] if i.get('generated')]
 assert gen and gen[0]['durationSec'] >= 4.5, st
 print('   生成条目:', gen[0]['name'], round(gen[0]['durationSec'],1), '秒')"
 
-note "播放器/面板页面可访问"
+note "播放器/面板页面及其子资源可访问"
 curl -fsS -o /dev/null "${BASE}/play"
 curl -fsS -o /dev/null "${BASE}/"
 curl -fsS -o /dev/null "${BASE}/logo.svg"
+# 公开面:页面 + 子资源必须全 200(曾踩坑:页面 200 但 play.js 404 → 黑屏)
+curl -fsS -o /dev/null "${PUB}/play"
+curl -fsS -o /dev/null "${PUB}/play.js"
+curl -fsS -o /dev/null "${PUB}/logo.svg"
+# 面板静态资源(经管理面)
+curl -fsS -o /dev/null "${BASE}/style.css"
+curl -fsS -o /dev/null "${BASE}/app.js"
 
 note "删除测试条目"
 curl -fsS -X DELETE "${BASE}/api/v1/items/${ID}" >/dev/null

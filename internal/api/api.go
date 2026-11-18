@@ -78,10 +78,11 @@ func Run() error {
 	publicMux.HandleFunc("/api/v1/now", s.handleNow)
 	publicMux.HandleFunc("/api/v1/playlist", s.handlePlaylist)
 	publicMux.HandleFunc("/media/", s.handleMedia)
+	// 播放器页 + 它的两个子资源(其余一律 404:管理能力不暴露到 LAN)
 	publicMux.HandleFunc("/play", s.handlePage("play.html"))
+	publicMux.HandleFunc("/play.js", s.handleAsset("play.js"))
 	publicMux.HandleFunc("/logo.svg", s.handleAsset("logo.svg"))
 	publicMux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		// 其余一律 404:上传/删除/设置等管理能力不暴露到 LAN
 		http.NotFound(w, r)
 	})
 
